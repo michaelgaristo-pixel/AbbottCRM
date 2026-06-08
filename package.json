@@ -1,0 +1,14 @@
+{
+  "name": "abbott-crm-route-planner",
+  "version": "1.0.0",
+  "description": "Route planner for Abbott CRM installs — reads Notion, optimizes stops, writes schedule back",
+  "type": "module",
+  "scripts": {
+    "inspect": "node src/inspect.js",
+    "plan": "node src/plan.js"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "dotenv": "^16.4.5"
+  }
+}
