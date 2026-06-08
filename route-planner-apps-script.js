@@ -37,18 +37,15 @@ function inspectDatabase() {
   }
 
   Logger.log(lines.join('\n'));
-  SpreadsheetApp.getUi().alert(lines.join('\n'));
+  Browser.msgBox('Database Inspection', lines.join('\n'), Browser.Buttons.OK);
 }
 
 // ── Main: plan the route ─────────────────────────────────────────
 function planRoute() {
-  const ui = SpreadsheetApp.getUi();
-  const startResp = ui.prompt('Starting Address', 'Enter the address you are leaving from today:', ui.ButtonSet.OK_CANCEL);
-  if (startResp.getSelectedButton() !== ui.Button.OK) return;
-  const startAddress = startResp.getResponseText().trim();
-  if (!startAddress) { ui.alert('No starting address entered.'); return; }
+  const startAddress = Browser.inputBox('Starting Address', 'Enter the address you are leaving from today:', Browser.Buttons.OK_CANCEL);
+  if (startAddress === 'cancel' || !startAddress.trim()) { Browser.msgBox('No starting address entered.'); return; }
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.create('Abbott CRM Route Plans');
+  const ss = SpreadsheetApp.create('Abbott CRM Route Plans — ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'));
   const sheetName = `Route ${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')}`;
   let sheet = ss.getSheetByName(sheetName);
   if (sheet) sheet.clear(); else sheet = ss.insertSheet(sheetName);
@@ -69,7 +66,7 @@ function planRoute() {
   })).filter(a => a.address.trim());
 
   if (!accounts.length) {
-    ui.alert(`No accounts found with the "${ADDRESS_PROPERTY}" property filled in.\n\nRun inspectDatabase() first to find the correct property name, then update ADDRESS_PROPERTY in the script.`);
+    Browser.msgBox(`No accounts found with the "${ADDRESS_PROPERTY}" property filled in.\n\nRun inspectDatabase() first to find the correct property name, then update ADDRESS_PROPERTY in the script.`);
     return;
   }
   Logger.log(`Found ${accounts.length} accounts with addresses`);
@@ -77,7 +74,7 @@ function planRoute() {
   // 2. Geocode start
   Logger.log('Geocoding starting address…');
   const startCoords = geocode(startAddress);
-  if (!startCoords) { ui.alert(`Could not find starting address: "${startAddress}"`); return; }
+  if (!startCoords) { Browser.msgBox(`Could not find starting address: "${startAddress}"`); return; }
 
   // 3. Geocode accounts
   const geocoded = [];
@@ -90,7 +87,7 @@ function planRoute() {
     Utilities.sleep(1100); // Nominatim rate limit
   }
 
-  if (!geocoded.length) { ui.alert('Could not geocode any addresses.'); return; }
+  if (!geocoded.length) { Browser.msgBox('Could not geocode any addresses.'); return; }
 
   // 4. Optimize
   Logger.log('Optimizing route…');
@@ -124,7 +121,7 @@ function planRoute() {
   ss.setActiveSheet(sheet);
   SpreadsheetApp.flush();
 
-  ui.alert(`Done! ${ordered.length} stops planned.\n\nCheck the "${sheetName}" tab.\nGoogle Maps link is at the bottom of the sheet.`);
+  Browser.msgBox(`Done! ${ordered.length} stops planned.\n\nA new Google Sheet has been created in your Google Drive called "Abbott CRM Route Plans". Open it to see your stops and the Google Maps link at the bottom.`);
 }
 
 // ─── Notion helpers ──────────────────────────────────────────────
