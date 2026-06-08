@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abbott CRM — Route Planner</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; color: #111; }
+  .container { max-width: 720px; margin: 40px auto; padding: 0 20px 60px; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 14px; margin-bottom: 32px; }
+  .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #444; }
+  input[type=text], input[type=password] {
+    width: 100%; padding: 10px 12px; border: 1.5px solid #ddd; border-radius: 8px;
+    font-size: 14px; outline: none; transition: border .15s;
+  }
+  input:focus { border-color: #0070f3; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  button {
+    width: 100%; padding: 12px; background: #0070f3; color: #fff; border: none;
+    border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px;
+    transition: background .15s;
+  }
+  button:hover:not(:disabled) { background: #0058cc; }
+  button:disabled { background: #aaa; cursor: default; }
+  .log { background: #111; color: #ccc; border-radius: 8px; padding: 16px; font-family: monospace;
+    font-size: 13px; line-height: 1.7; min-height: 60px; white-space: pre-wrap; display: none; }
+  .log.visible { display: block; }
+  .log .ok   { color: #4ade80; }
+  .log .warn { color: #facc15; }
+  .log .err  { color: #f87171; }
+  .results { display: none; }
+  .results.visible { display: block; }
+  .stop { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+  .stop:last-child { border-bottom: none; }
+  .stop-num { width: 28px; height: 28px; border-radius: 50%; background: #0070f3; color: #fff;
+    font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .stop-name { font-weight: 600; font-size: 14px; }
+  .stop-addr { font-size: 13px; color: #666; }
+  .maps-btn { display: inline-block; margin-top: 16px; padding: 10px 20px; background: #34a853;
+    color: #fff; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; }
+  .notion-btn { display: inline-block; margin-top: 10px; padding: 10px 20px; background: #111;
+    color: #fff; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; margin-left: 10px; }
+  .tip { font-size: 12px; color: #999; margin-top: 6px; }
+  .section-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+  .skipped { font-size: 13px; color: #999; margin-top: 12px; }
+  details summary { cursor: pointer; font-size: 13px; color: #666; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Abbott CRM — Route Planner</h1>
+  <p class="subtitle">Optimize your install schedule from your Notion CRM</p>
+
+  <div class="card">
+    <details id="settingsDetails" open>
+      <summary><strong>Settings</strong></summary>
+      <br>
+      <div class="row">
+        <div>
+          <label for="notionToken">Notion API Token</label>
+          <input type="password" id="notionToken" placeholder="ntn_..." />
+          <p class="tip">From notion.so/my-integrations</p>
+        </div>
+        <div>
+          <label for="databaseId">Database ID</label>
+          <input type="text" id="databaseId" value="3731b9a3054c808b9e66dfc877ddf5ce" />
+          <p class="tip">From your database URL</p>
+        </div>
+      </div>
+      <br>
+      <div class="row">
+        <div>
+          <label for="nameField">Name property</label>
+          <input type="text" id="nameField" value="Name" />
+        </div>
+        <div>
+          <label for="addressField">Address property</label>
+          <input type="text" id="addressField" value="Address" />
+          <p class="tip">Exact property name from Notion</p>
+        </div>
+      </div>
+      <br>
+      <div>
+        <label for="parentPageId">Schedule parent page ID <span style="font-weight:400;color:#999">(optional — where to save schedules)</span></label>
+        <input type="text" id="parentPageId" placeholder="Paste a Notion page ID here" />
+        <p class="tip">Open a Notion page → copy its URL → the ID is the last part before the ?</p>
+      </div>
+      <br>
+      <button id="inspectBtn" type="button" onclick="inspectDatabase()">🔍 Inspect Database (find property names)</button>
+    </details>
+  </div>
+
+  <div class="card">
+    <p class="section-title">Plan a Route</p>
+    <label for="startAddress">Your starting address today</label>
+    <input type="text" id="startAddress" placeholder="123 Main St, Chicago, IL" />
+    <button id="planBtn" type="button" onclick="planRoute()">⚡ Plan Route</button>
+  </div>
+
+  <div class="card log" id="log"></div>
+
+  <div class="card results" id="results">
+    <p class="section-title">Optimized Route</p>
+    <div id="stopList"></div>
+    <div id="skippedList"></div>
+    <div style="margin-top:16px">
+      <a id="mapsLink" class="maps-btn" href="#" target="_blank">📍 Open in Google Maps</a>
+      <a id="notionLink" class="notion-btn" href="#" target="_blank" style="display:none">📄 View in Notion</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Notion API via CORS proxy ───────────────────────────────────────────────
+const PROXY = 'https://corsproxy.io/?';
+
+async function notionFetch(path, options = {}) {
+  const token = document.getElementById('notionToken').value.trim();
+  const url = PROXY + encodeURIComponent('https://api.notion.com/v1' + path);
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+  return data;
+}
+
+async function getSchema(dbId) {
+  return notionFetch(`/databases/${dbId}`);
+}
+
+async function getAllPages(dbId) {
+  const pages = [];
+  let cursor;
+  do {
+    const body = { page_size: 100 };
+    if (cursor) body.start_cursor = cursor;
+    const res = await notionFetch(`/databases/${dbId}/query`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    pages.push(...res.results);
+    cursor = res.has_more ? res.next_cursor : null;
+  } while (cursor);
+  return pages;
+}
+
+function extractText(prop) {
+  if (!prop) return '';
+  switch (prop.type) {
+    case 'title':       return prop.title?.map(t => t.plain_text).join('') ?? '';
+    case 'rich_text':   return prop.rich_text?.map(t => t.plain_text).join('') ?? '';
+    case 'url':         return prop.url ?? '';
+    case 'email':       return prop.email ?? '';
+    case 'phone_number':return prop.phone_number ?? '';
+    case 'select':      return prop.select?.name ?? '';
+    case 'multi_select':return prop.multi_select?.map(s => s.name).join(', ') ?? '';
+    default:            return '';
+  }
+}
+
+// ─── Geocoding (Nominatim) ───────────────────────────────────────────────────
+async function geocode(address) {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+  const res = await fetch(url, { headers: { 'User-Agent': 'AbbottCRM-RoutePlanner/1.0' } });
+  const data = await res.json();
+  if (!data.length) return null;
+  return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── Routing ─────────────────────────────────────────────────────────────────
+function haversine(a, b) {
+  const R = 6371, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function totalDist(route) {
+  let d = 0;
+  for (let i = 0; i < route.length - 1; i++) d += haversine(route[i].coords, route[i+1].coords);
+  return d;
+}
+
+function nearestNeighbor(start, stops) {
+  const unvisited = [...stops], route = [];
+  let cur = start;
+  while (unvisited.length) {
+    let bi = 0, bd = Infinity;
+    for (let i = 0; i < unvisited.length; i++) {
+      const d = haversine(cur.coords, unvisited[i].coords);
+      if (d < bd) { bd = d; bi = i; }
+    }
+    cur = unvisited.splice(bi, 1)[0];
+    route.push(cur);
+  }
+  return route;
+}
+
+function twoOpt(route) {
+  let best = route, improved = true;
+  while (improved) {
+    improved = false;
+    for (let i = 0; i < best.length - 1; i++) {
+      for (let j = i + 2; j < best.length; j++) {
+        const next = [...best.slice(0, i+1), ...best.slice(i+1, j+1).reverse(), ...best.slice(j+1)];
+        if (totalDist(next) < totalDist(best)) { best = next; improved = true; }
+      }
+    }
+  }
+  return best;
+}
+
+function googleMapsUrl(start, stops) {
+  const enc = s => encodeURIComponent(s);
+  if (stops.length === 1) return `https://www.google.com/maps/dir/${enc(start)}/${enc(stops[0].address)}`;
+  const wps = stops.slice(0, -1).map(s => enc(s.address)).join('/');
+  return `https://www.google.com/maps/dir/${enc(start)}/${wps}/${enc(stops[stops.length-1].address)}`;
+}
+
+// ─── Notion schedule page ────────────────────────────────────────────────────
+async function createSchedulePage(parentPageId, title, ordered, skipped, mapsUrl, startAddress) {
+  const t = s => ({ type: 'text', text: { content: s } });
+  const bold = s => ({ type: 'text', text: { content: s }, annotations: { bold: true } });
+
+  const blocks = [
+    { object:'block', type:'heading_2', heading_2: { rich_text: [t('Route Details')] } },
+    { object:'block', type:'paragraph', paragraph: { rich_text: [t(`Starting from: ${startAddress}`)] } },
+    { object:'block', type:'paragraph', paragraph: { rich_text: [t(`Total stops: ${ordered.length}`)] } },
+    { object:'block', type:'divider', divider:{} },
+    { object:'block', type:'heading_2', heading_2: { rich_text: [t('Stop Order')] } },
+    ...ordered.flatMap((stop, i) => [
+      { object:'block', type:'numbered_list_item', numbered_list_item: { rich_text: [bold(stop.name)] } },
+      { object:'block', type:'bulleted_list_item', bulleted_list_item: { rich_text: [t(stop.address)] } },
+    ]),
+    { object:'block', type:'divider', divider:{} },
+    { object:'block', type:'heading_2', heading_2: { rich_text: [t('Google Maps')] } },
+    { object:'block', type:'paragraph', paragraph: { rich_text: [{ type:'text', text:{ content:'Open route in Google Maps', link:{ url: mapsUrl } } }] } },
+  ];
+
+  if (skipped.length) {
+    blocks.push(
+      { object:'block', type:'divider', divider:{} },
+      { object:'block', type:'heading_2', heading_2: { rich_text: [t('Skipped (no address)')] } },
+      ...skipped.map(s => ({ object:'block', type:'paragraph', paragraph: { rich_text: [t(`• ${s.name}`)] } }))
+    );
+  }
+
+  const page = await notionFetch('/pages', {
+    method: 'POST',
+    body: JSON.stringify({
+      parent: { type: 'page_id', page_id: parentPageId },
+      properties: { title: { title: [{ type:'text', text:{ content: title } }] } },
+      children: blocks,
+    }),
+  });
+  return page.url;
+}
+
+// ─── UI helpers ──────────────────────────────────────────────────────────────
+let logEl;
+
+function log(msg, type = '') {
+  if (!logEl) { logEl = document.getElementById('log'); logEl.classList.add('visible'); }
+  const span = document.createElement('span');
+  if (type) span.className = type;
+  span.textContent = msg + '\n';
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function resetLog() {
+  logEl = document.getElementById('log');
+  logEl.innerHTML = '';
+  logEl.classList.add('visible');
+  document.getElementById('results').classList.remove('visible');
+}
+
+// ─── Inspect ─────────────────────────────────────────────────────────────────
+async function inspectDatabase() {
+  const dbId = document.getElementById('databaseId').value.trim();
+  const token = document.getElementById('notionToken').value.trim();
+  if (!token) return alert('Enter your Notion API token first.');
+  if (!dbId)  return alert('Enter your Database ID first.');
+
+  resetLog();
+  const btn = document.getElementById('inspectBtn');
+  btn.disabled = true;
+
+  try {
+    log('Fetching database schema…');
+    const db = await getSchema(dbId);
+    const title = db.title?.[0]?.plain_text ?? '(untitled)';
+    log(`\nDatabase: "${title}"`, 'ok');
+    log('\nProperties:');
+    for (const [name, prop] of Object.entries(db.properties)) {
+      log(`  ${name.padEnd(30)} [${prop.type}]`);
+    }
+    log('\n✓ Find your address property above and enter its exact name in the "Address property" field.', 'ok');
+    document.getElementById('settingsDetails').open = true;
+  } catch(e) {
+    log(`\n✗ Error: ${e.message}`, 'err');
+    log('\nTip: Make sure your integration is added to the database (open database in Notion → ··· → Connections → add your integration)', 'warn');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─── Plan Route ──────────────────────────────────────────────────────────────
+async function planRoute() {
+  const token       = document.getElementById('notionToken').value.trim();
+  const dbId        = document.getElementById('databaseId').value.trim();
+  const nameField   = document.getElementById('nameField').value.trim();
+  const addrField   = document.getElementById('addressField').value.trim();
+  const startAddr   = document.getElementById('startAddress').value.trim();
+  const parentPageId= document.getElementById('parentPageId').value.trim();
+
+  if (!token)     return alert('Enter your Notion API token.');
+  if (!dbId)      return alert('Enter your Database ID.');
+  if (!startAddr) return alert('Enter your starting address.');
+
+  resetLog();
+  const btn = document.getElementById('planBtn');
+  btn.disabled = true;
+
+  try {
+    // 1. Fetch accounts
+    log('Fetching accounts from Notion…');
+    const pages = await getAllPages(dbId);
+    log(`  ${pages.length} accounts found`, 'ok');
+
+    const accounts = pages.map(p => ({
+      id: p.id,
+      url: p.url,
+      name: extractText(p.properties[nameField]) || '(unnamed)',
+      address: extractText(p.properties[addrField]),
+    })).filter(a => a.address.trim());
+
+    if (!accounts.length) {
+      log(`\n✗ No accounts have an address in the "${addrField}" property.`, 'err');
+      log('Run "Inspect Database" to find the correct property name.', 'warn');
+      return;
+    }
+    log(`  ${accounts.length} have addresses`);
+
+    // 2. Geocode start
+    log(`\nGeocoding starting address…`);
+    const startCoords = await geocode(startAddr);
+    if (!startCoords) { log(`✗ Could not geocode: "${startAddr}"`, 'err'); return; }
+    log(`  OK`, 'ok');
+
+    // 3. Geocode accounts
+    log(`\nGeocoding ${accounts.length} account addresses (1/sec)…`);
+    const geocoded = [];
+    for (const acc of accounts) {
+      process && 0; // no-op
+      log(`  ${acc.name}…`);
+      const coords = await geocode(acc.address);
+      geocoded.push({ ...acc, coords });
+      if (!coords) log(`    ⚠ could not geocode`, 'warn');
+      await sleep(1100);
+    }
+
+    const routable = geocoded.filter(a => a.coords);
+    const skipped  = geocoded.filter(a => !a.coords);
+    log(`\n  ${routable.length} geocoded, ${skipped.length} skipped`, routable.length ? 'ok' : 'err');
+
+    if (!routable.length) { log('No accounts could be geocoded.', 'err'); return; }
+
+    // 4. Optimize
+    log('\nOptimizing route…');
+    const startNode = { coords: startCoords };
+    const nn = nearestNeighbor(startNode, routable);
+    const ordered = twoOpt(nn);
+    log(`  Done — ${ordered.length} stops`, 'ok');
+
+    // 5. Build Maps URL
+    const mapsUrl = googleMapsUrl(startAddr, ordered);
+
+    // 6. Render results
+    const stopList = document.getElementById('stopList');
+    stopList.innerHTML = '';
+    ordered.forEach((stop, i) => {
+      stopList.innerHTML += `
+        <div class="stop">
+          <div class="stop-num">${i+1}</div>
+          <div>
+            <div class="stop-name">${stop.name}</div>
+            <div class="stop-addr">${stop.address}</div>
+          </div>
+        </div>`;
+    });
+
+    if (skipped.length) {
+      document.getElementById('skippedList').innerHTML =
+        `<p class="skipped">⚠ Skipped (no address): ${skipped.map(s => s.name).join(', ')}</p>`;
+    }
+
+    document.getElementById('mapsLink').href = mapsUrl;
+    document.getElementById('results').classList.add('visible');
+
+    // 7. Save to Notion
+    if (parentPageId) {
+      log('\nCreating Notion schedule page…');
+      const today = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+      const pageUrl = await createSchedulePage(parentPageId, `Route Plan — ${today}`, ordered, skipped, mapsUrl, startAddr);
+      log(`  Saved!`, 'ok');
+      const notionLink = document.getElementById('notionLink');
+      notionLink.href = pageUrl;
+      notionLink.style.display = 'inline-block';
+    } else {
+      log('\nTip: Set a "Schedule parent page ID" to automatically save this to Notion.', 'warn');
+    }
+
+    log('\n✓ Done!', 'ok');
+
+  } catch(e) {
+    log(`\n✗ Error: ${e.message}`, 'err');
+    if (e.message.includes('401') || e.message.includes('403')) {
+      log('Check that your token is correct and the integration is connected to the database.', 'warn');
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>
