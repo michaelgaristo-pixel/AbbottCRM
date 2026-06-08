@@ -115,12 +115,17 @@
 
 <script>
 // ─── Notion API via CORS proxy ───────────────────────────────────────────────
-const PROXY = 'https://corsproxy.io/?';
+// Try multiple proxies in order until one works
+const PROXIES = [
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://cors-anywhere.herokuapp.com/${url}`,
+];
 
 async function notionFetch(path, options = {}) {
   const token = document.getElementById('notionToken').value.trim();
-  const url = PROXY + encodeURIComponent('https://api.notion.com/v1' + path);
-  const res = await fetch(url, {
+  const target = 'https://api.notion.com/v1' + path;
+  const fetchOptions = {
     ...options,
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -128,10 +133,20 @@ async function notionFetch(path, options = {}) {
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-  return data;
+  };
+
+  let lastErr;
+  for (const makeProxy of PROXIES) {
+    try {
+      const res = await fetch(makeProxy(target), fetchOptions);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      return data;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw new Error(`All proxies failed. Last error: ${lastErr?.message}. Try opening the page in Chrome or Firefox, or disable any ad-blocker.`);
 }
 
 async function getSchema(dbId) {
